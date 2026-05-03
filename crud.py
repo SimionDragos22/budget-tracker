@@ -4,6 +4,7 @@ from datetime import date
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
+
 DEFAULT_CATEGORIES = [
     ("Salary", "income"),
     ("Freelance", "income"),
@@ -25,14 +26,15 @@ DEFAULT_CATEGORIES = [
 
 
 # USERS
-def create_user(session: Session, username: str, password: str):
-    existing_user = session.query(User).filter(User.username == username).first()
+def create_user(session: Session, username: str, email: str, password: str):
+    existing_user = session.query(User).filter((User.username == username) | (User.email == email)).first()
 
     if existing_user:
         return None
 
     user = User(
         username=username,
+        email=email,
         password_hash=generate_password_hash(password)
     )
 
@@ -45,17 +47,15 @@ def create_user(session: Session, username: str, password: str):
     return user
 
 
-def authenticate_user(session: Session, username: str, password: str):
-    user = session.query(User).filter(User.username == username).first()
+def authenticate_user(session, identifier: str, password: str):
+    user = session.query(User).filter(
+        (User.username == identifier) | (User.email == identifier)
+    ).first()
 
-    if not user:
-        return None
+    if user and check_password_hash(user.password_hash, password):
+        return user
 
-    if not check_password_hash(user.password_hash, password):
-        return None
-
-    return user
-
+    return None
 
 # CATEGORIES
 def seed_categories(session: Session, user_id: int):

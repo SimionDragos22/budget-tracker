@@ -3,6 +3,14 @@ import pandas as pd
 import plotly.express as px
 from datetime import date
 import plotly.graph_objects as go
+import requests
+import xml.etree.ElementTree as ET
+import random
+import smtplib
+from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+import os
+from dotenv import load_dotenv
 
 from database import init_db, get_session
 from crud import (
@@ -19,6 +27,44 @@ from crud import (
 
 init_db()
 session = get_session()
+load_dotenv()
+
+
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+
+
+def send_verification_email(to_email, code):
+    msg = MIMEText(
+        f"Your verification code is: {code}\n\nThis code is valid for 15 minutes."
+    )
+    msg["Subject"] = "Budget Tracker - Email Verification"
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = to_email
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.send_message(msg)
+
+@st.cache_data(ttl=3600)
+def get_exchange_rates():
+    url = "https://www.bnr.ro/nbrfxrates.xml"
+
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+
+    root = ET.fromstring(response.content)
+
+    rates = {"RON": 1.0}
+
+    for rate in root.findall(".//{http://www.bnr.ro/xsd}Rate"):
+        currency = rate.attrib["currency"]
+        multiplier = float(rate.attrib.get("multiplier", "1"))
+        value = float(rate.text)
+
+        rates[currency] = value / multiplier
+
+    return rates
 # seed_categories(session)
 
 st.set_page_config(page_title="Budget Tracker", layout="wide")
@@ -29,6 +75,20 @@ if "username" not in st.session_state:
 
 if "page" not in st.session_state:
     st.session_state.page = "Dashboard"
+if "verification_code" not in st.session_state:
+    st.session_state.verification_code = None
+
+if "verification_email" not in st.session_state:
+    st.session_state.verification_email = None
+
+if "verification_expiry" not in st.session_state:
+    st.session_state.verification_expiry = None
+
+if "pending_username" not in st.session_state:
+    st.session_state.pending_username = None
+
+if "pending_password" not in st.session_state:
+    st.session_state.pending_password = None
 st.markdown("<style>body {}</style>", unsafe_allow_html=True)
 
 
@@ -70,20 +130,13 @@ st.markdown("""
     visibility: hidden;
 }
 
-.block-container {
-    padding-top: 40px !important;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-    max-width: 1100px;
-    margin: auto;
-}
 
 /* NAVBAR */
 .block-container {
-    padding-top: 140px !important;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-    max-width: 1100px;
+    padding-top: 85px !important;
+    padding-left: 1.2rem;
+    padding-right: 1.2rem;
+    max-width: 920px;
     margin: auto;
 }
 
@@ -93,8 +146,8 @@ st.markdown("""
     left: 0;
     right: 0;
     z-index: 999999;
-    height: 95px;
-    padding: 0 34px;
+    height: 72px;
+    padding: 0 26px;
     background: rgba(11,17,32,0.96);
     border-bottom: 1px solid var(--border);
     display: flex;
@@ -108,39 +161,39 @@ st.markdown("""
 }
 
 .nav-title {
-    font-size: 24px;
+    font-size: 21px;
     font-weight: 800;
     color: white;
 }
 
 .nav-subtitle {
-    margin-top: 8px;
-    font-size: 14px;
+    margin-top: 4px;
+    font-size: 12px;
     color: #94a3b8;
 }
 
 .user-pill {
     position: fixed !important;
-    top: 25px !important;
-    right: 560px !important;
-    height: 46px;
-    min-width: 165px;
-    padding: 0 18px 0 11px;
+    top: 18px !important;
+    right: 420px !important;
+    height: 36px;
+    min-width: 140px;
+    padding: 0 12px 0 9px;
     border-radius: 999px;
     background: #111827;
     border: 1px solid rgba(148,163,184,0.28);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 9px;
     color: #e5e7eb;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 650;
     z-index: 1000001;
 }
 
 .avatar {
-    width: 26px;
-    height: 26px;
+    width: 23px;
+    height: 23px;
     border-radius: 50%;
     background: #7c3aed;
     color: white;
@@ -148,30 +201,44 @@ st.markdown("""
     align-items: center;
     justify-content: center;
     font-weight: 800;
+    font-size: 12px;
 }
 
 .st-key-top_nav_buttons {
     position: fixed;
-    top: 25px;
-    right: 34px;
+    top: 18px;
+    right: 24px;
     z-index: 1000000;
-    width: 500px;
+    width: 380px;
 }
 
 .st-key-top_nav_buttons .stButton > button {
-    height: 46px;
-    border-radius: 8px;
+    width: 120px;
+    height: 36px !important;
+    min-width: unset !important;
+    padding: 0 10px !important;
+    border-radius: 7px;
     background: #111827 !important;
-    color: white !important;
-    border: 1px solid rgba(148,163,184,0.35) !important;
-    font-size: 16px !important;
-    font-weight: 700 !important;
+    color: #e5e7eb !important;
+    border: 1px solid rgba(148,163,184,0.28) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
     white-space: nowrap !important;
 }
 
 .st-key-top_nav_buttons .stButton > button:hover {
     background: #1e293b !important;
     border-color: rgba(148,163,184,0.65) !important;
+}
+        
+.st-key-top_nav_buttons div[data-testid="column"] {
+    gap: 8px;
+}
+
+.st-key-top_nav_buttons .stButton > button:hover {
+    background: #1e293b !important;
+    border-color: rgba(148,163,184,0.5) !important;
+    transform: translateY(-1px);
 }
 /* TITLURI */
 h1 {
@@ -302,7 +369,84 @@ li[role="option"]:hover {
     background: #1f2937 !important;
     color: #ffffff !important;
 }
+.icon-box {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
 
+.arrow-income::before {
+    content: "↑";
+    color: #34d399;
+}
+
+.arrow-expense::before {
+    content: "↓";
+    color: #fb7185;
+}
+            
+h1 {
+    font-size: 27px !important;
+    margin-bottom: 18px !important;
+}
+
+h2 {
+    font-size: 22px !important;
+}
+
+.stTextInput,
+.stDateInput,
+.stSelectbox {
+    margin-bottom: 8px !important;
+}
+
+.stTextInput input,
+.stDateInput input {
+    height: 38px !important;
+    font-size: 13px !important;
+}
+
+.stSelectbox div[data-baseweb="select"] {
+    min-height: 38px !important;
+}
+
+.card {
+    padding: 14px;
+}
+
+.metric-title {
+    font-size: 12px;
+}
+
+.metric-value {
+    font-size: 20px;
+}
+
+.stButton > button {
+    height: 38px !important;
+}
+            
+.badge {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.st-key-top_nav_buttons div[data-testid="column"] {
+    display: flex;
+    justify-content: center;
+}
 
 </style>
 """, unsafe_allow_html=True)
@@ -315,11 +459,11 @@ if st.session_state.user_id is None:
     tab1, tab2 = st.tabs(["Login", "Register"])
 
     with tab1:
-        username = st.text_input("Username", key="login_user")
+        identifier = st.text_input("Username or Email", key="login_user")
         password = st.text_input("Password", type="password", key="login_pass")
 
         if st.button("Login", key="login_btn"):
-            user = authenticate_user(session, username, password)
+            user = authenticate_user(session, identifier, password)
 
             if user:
                 st.session_state.user_id = user.id
@@ -331,20 +475,63 @@ if st.session_state.user_id is None:
                 st.error("Invalid credentials")
 
     with tab2:
+        new_email = st.text_input("Email", key="reg_email")
         new_user = st.text_input("Username", key="reg_user")
         new_pass = st.text_input("Password", type="password", key="reg_pass")
 
-        if st.button("Register", key="register_btn"):
-            user = create_user(session, new_user, new_pass)
-
-            if user:
-                st.session_state.user_id = user.id
-                st.session_state.username = user.username
-                st.session_state.page = "Dashboard"
-                st.success("Account created!")
-                st.rerun()
+        if st.button("Send Verification Code", key="send_code_btn"):
+            if not new_email or not new_user or not new_pass:
+                st.error("Please fill in all fields.")
             else:
-                st.error("Username already exists")
+                code = str(random.randint(100000, 999999))
+
+                st.session_state.verification_code = code
+                st.session_state.verification_email = new_email
+                st.session_state.verification_expiry = datetime.now() + timedelta(minutes=15)
+
+                st.session_state.pending_username = new_user
+                st.session_state.pending_password = new_pass
+
+                send_verification_email(new_email, code)
+
+                st.success("Verification code sent. Check your email.")
+
+        verification_input = st.text_input("Enter verification code", key="verification_input")
+
+        if st.button("Verify & Create Account", key="verify_create_btn"):
+            if not st.session_state.verification_code:
+                st.error("Please request a verification code first.")
+
+            elif datetime.now() > st.session_state.verification_expiry:
+                st.error("Verification code expired. Please request a new one.")
+
+            elif verification_input != st.session_state.verification_code:
+                st.error("Invalid verification code.")
+
+            else:
+                user = create_user(
+                    session,
+                    st.session_state.pending_username,
+                    st.session_state.verification_email,
+                    st.session_state.pending_password
+                )
+
+                if user:
+                    st.session_state.user_id = user.id
+                    st.session_state.username = user.username
+                    st.session_state.page = "Dashboard"
+
+                    st.session_state.verification_code = None
+                    st.session_state.verification_email = None
+                    st.session_state.verification_expiry = None
+                    st.session_state.pending_username = None
+                    st.session_state.pending_password = None
+
+                    st.success("Account created successfully!")
+                    st.rerun()
+
+                else:
+                    st.error("Username or email already exists.")
 
     st.stop()
 
@@ -372,7 +559,7 @@ st.html(f"""
 nav = st.container(key="top_nav_buttons")
 
 with nav:
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         if st.button("Dashboard", key="btn_dashboard", use_container_width=True):
@@ -392,6 +579,21 @@ with nav:
             st.rerun()
 
 page = st.session_state.page
+
+rates = get_exchange_rates()
+
+currency = st.selectbox(
+    "Display currency",
+    ["RON", "EUR", "USD", "GBP", "CHF"],
+    index=0
+)
+
+def convert_from_ron(amount):
+    return amount / rates[currency]
+
+def money(amount):
+    return f"{convert_from_ron(amount):.2f} {currency}"
+
 # DASHBOARD
 if page == "Dashboard":
     st.title("Dashboard")
@@ -412,7 +614,7 @@ if page == "Dashboard":
             <div class="card">
                 <div class="metric-title">Balance</div>
                 <div class="metric-value {'positive' if balance >= 0 else 'negative'}">
-                    {balance:.2f} RON
+                    {money(balance)}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -421,7 +623,7 @@ if page == "Dashboard":
             st.markdown(f"""
             <div class="card">
                 <div class="metric-title">Total Income</div>
-                <div class="metric-value positive">{total_income:.2f} RON</div>
+                <div class="metric-value positive">{money(total_income)}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -429,7 +631,7 @@ if page == "Dashboard":
             st.markdown(f"""
             <div class="card">
                 <div class="metric-title">Total Expense</div>
-                <div class="metric-value negative">{total_expense:.2f} RON</div>
+                <div class="metric-value negative">{money(total_expense)}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -446,7 +648,7 @@ if page == "Dashboard":
             df_grouped = df_expenses.groupby("Category").sum().reset_index()
 
             labels = df_grouped["Category"].tolist()
-            values = df_grouped["Amount"].tolist()
+            values = [convert_from_ron(v) for v in df_grouped["Amount"].tolist()]
             total_expenses_chart = sum(values)
 
             modern_colors = [
@@ -480,7 +682,7 @@ if page == "Dashboard":
                         ),
                         hovertemplate=(
                             "<b>%{label}</b><br>"
-                            "Amount: %{value:.2f} RON<br>"
+                            "Amount: %{value:.2f} {currency}<br>"
                             "Share: %{percent}<extra></extra>"
                         )
                     )
@@ -490,7 +692,7 @@ if page == "Dashboard":
             fig1.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                height=380,
+                height=320,
                 margin=dict(l=10, r=10, t=10, b=10),
                 font=dict(color="#f8fafc", size=13),
                 showlegend=True,
@@ -513,7 +715,7 @@ if page == "Dashboard":
                 ),
                 annotations=[
                     dict(
-                        text=f"<b>{total_expenses_chart:.0f}</b><br><span style='font-size:12px;color:#94a3b8'>RON spent</span>",
+                        text=f"<b>{total_expenses_chart:.0f}</b><br><span style='font-size:12px;color:#94a3b8'>{currency} spent</span>",
                         x=0.5,
                         y=0.5,
                         font=dict(size=18, color="#f8fafc"),
@@ -533,10 +735,35 @@ if page == "Dashboard":
                 use_container_width=True,
                 config={
                     "displayModeBar": False,
-                    "responsive": True
+                    "responsive": True,
+                    "showTips": False
                 },
                 key="expenses_donut_chart"
             )
+            st.markdown("""
+            <style>
+            .chart-hint {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: #111827;
+                color: #cbd5e1;
+                padding: 10px 14px;
+                border-radius: 10px;
+                border: 1px solid rgba(148,163,184,0.2);
+                font-size: 13px;
+                z-index: 9999;
+                opacity: 0.85;
+            }
+            .chart-hint:hover {
+                opacity: 1;
+            }
+            </style>
+
+            <div class="chart-hint">
+                Double-click on legend to isolate a category
+            </div>
+            """, unsafe_allow_html=True)
 
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -550,6 +777,7 @@ if page == "Dashboard":
 
         df_all = df_all.sort_values("Date")
         df_all["Balance"] = df_all["Amount"].cumsum()
+        df_all["Balance"] = df_all["Balance"].apply(convert_from_ron)
 
         fig2 = px.line(df_all, x="Date", y="Balance")
 
@@ -564,7 +792,7 @@ if page == "Dashboard":
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#f8fafc", size=13),
-            height=320,
+            height=280,
             margin=dict(l=10, r=10, t=10, b=10),
             xaxis=dict(
                 gridcolor="rgba(148,163,184,0.12)",
@@ -629,7 +857,9 @@ elif page == "Transactions":
 
     if submitted:
         try:
-            amount = float(amount_input)
+            amount_input_value = float(amount_input)
+
+            amount = amount_input_value * rates[currency]
             if amount <= 0:
                 st.error("Amount must be greater than 0.")
                 st.stop()
@@ -724,7 +954,7 @@ elif page == "Transactions":
         </div>
 
         <div class="amount" style="color:{amount_color}; min-width:120px; text-align:right;">
-            {amount_sign}{t.amount:.2f} RON
+            {amount_sign}{money(t.amount)}
         </div>
     </div>
 </div>

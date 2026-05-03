@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, UniqueConstraint
+from sqlalchemy import Boolean, Column, Integer, String, Float, Date, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
+
 
 Base = declarative_base()
 
@@ -13,6 +14,10 @@ class User(Base):
 
     categories = relationship("Category", back_populates="user")
     transactions = relationship("Transaction", back_populates="user")
+
+    email = Column(String, unique=True, nullable=True)
+    is_email_verified = Column(Boolean, default=False)
+    verification_code = Column(String, nullable=True)
 
 
 class Category(Base):
