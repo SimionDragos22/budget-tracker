@@ -4,14 +4,12 @@ A simple personal finance web application built with Streamlit.
 
 ## Features
 
-- User authentication (register and login)
-- Add income and expense transactions
-- Custom categories
-- Dashboard with:
-  - Total balance
-  - Total income and expenses
-  - Expense breakdown chart
-  - Balance over time
+- User authentication (username or email)
+- Email verification with 6-digit code
+- Expense & income tracking
+- Category management
+- Interactive charts (Plotly)
+- Multi-user support
 
 ## Tech Stack
 
